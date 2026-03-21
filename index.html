@@ -962,20 +962,23 @@ async function onLogin(username) {
 }
 async function loadUserRecordings() {
   const {data:{user}}=await _sb.auth.getUser();
-  if(!user) return;
+  if(!user) { console.warn('loadUserRecordings: no user'); return; }
+  console.log('Loading recordings for', user.id);
   const {data,error}=await _sb.from('saved_stations').select('*').eq('user_id',user.id).order('saved_at',{ascending:false});
-  if(error) { console.error('Load failed:',error.message); return; }
+  if(error) { console.error('Load failed:', error.message, error.code, error.hint); return; }
+  console.log('Loaded', data?.length, 'recordings');
   if(!data||data.length===0) return;
   recordings=data.map(r=>({url:r.station_url,name:r.station_name,country:r.country,genre:r.genre,flag:r.flag,time:new Date(r.saved_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),station:{url_resolved:r.station_url,name:r.station_name,country:r.country,tags:r.genre,countrycode:''}}));
   renderRecordings();
 }
 async function saveOneRecording(r) {
   const {data:{user}}=await _sb.auth.getUser();
-  if(!user) return;
+  if(!user) { console.warn('saveOneRecording: not logged in'); return; }
   const {data:existing}=await _sb.from('saved_stations').select('id').eq('user_id',user.id).eq('station_url',r.url).limit(1);
-  if(existing&&existing.length>0) return;
+  if(existing&&existing.length>0) { console.log('Already saved:', r.name); return; }
   const {error}=await _sb.from('saved_stations').insert({user_id:user.id,station_url:r.url,station_name:r.name,country:r.country,genre:r.genre,flag:r.flag});
-  if(error) console.error('Save failed:',error.message, error.code);
+  if(error) console.error('Save failed:',error.message,error.code,error.hint);
+  else console.log('Saved:', r.name);
 }
 
 // ── PORTRAIT ──
