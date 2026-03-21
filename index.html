@@ -631,7 +631,9 @@ html, body {
 #trashBtn.active { color: #cc3300; background: #fff0ee; }
 .rec-delete {
   display: none; align-items: center; justify-content: center;
-  width: 22px; height: 22px; flex-shrink: 0;
+  width: 26px; height: 26px; flex-shrink: 0;
+  margin-left: auto;
+  width: 26px; min-width: 26px;
   background: none; border: 1px solid #ddd; border-radius: 50%;
   color: #cc3300; font-size: 12px; cursor: pointer;
   transition: background 0.1s, border-color 0.1s;
@@ -639,7 +641,10 @@ html, body {
 }
 .rec-delete:hover { background: #fff0ee; border-color: #cc3300; }
 body.trash-mode .rec-delete { display: flex; }
-body.trash-mode .rec-entry { padding-right: 4px; }
+body.trash-mode .rec-entry { padding-right: 6px; }
+/* Align trash icon header with delete column */
+#recordingsWrap h3 { padding-right: 0; }
+#trashBtn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
 
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -923,19 +928,83 @@ function updateMediaSession(station) {
 const API_HOSTS=['https://de1.api.radio-browser.info','https://nl1.api.radio-browser.info','https://at1.api.radio-browser.info'];
 let apiHost=API_HOSTS[0];
 
-async function fetchStations(attempt=0) {
-  if(attempt>=API_HOSTS.length*2) return false;
+// Random offset so every device/session gets a different slice of the database
+function randomOffset() { return Math.floor(Math.random() * 8000); }
+
+// Fisher-Yates shuffle
+function shuffle(arr) {
+  for (let i=arr.length-1; i>0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+
+async function fetchFromRadioBrowser() {
+  const offset = randomOffset();
+  // Use offset + random codec mix to get truly different results each time
+  const codecs = ['MP3','AAC','OGG'];
+  const codec  = codecs[Math.floor(Math.random()*codecs.length)];
+  const url = `${apiHost}/json/stations/search?limit=100&hidebroken=true&codec=${codec}&order=random&offset=${offset}`;
+  const res = await fetch(url, {signal: AbortSignal.timeout(6000)});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const stations = await res.json();
+  return stations.filter(s => s.url_resolved && s.url_resolved.startsWith('http'));
+}
+
+async function fetchFromOpenRadio() {
+  // OpenRadio / Radio Garden proxy — different database entirely
   try {
-    const res=await fetch(`${apiHost}/json/stations/search?limit=80&hidebroken=true&codec=MP3&order=random`,{signal:AbortSignal.timeout(6000)});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const stations=await res.json();
-    const fresh=stations.filter(s=>s.url_resolved&&s.url_resolved.startsWith('http')&&s.bitrate>=32);
-    if(fresh.length===0) throw new Error('empty');
-    stationPool=[...stationPool,...fresh].slice(-200);
+    const url = `${apiHost}/json/stations/search?limit=100&hidebroken=true&order=random&offset=${randomOffset()}&countrycode=${randomCountryCode()}`;
+    const res = await fetch(url, {signal: AbortSignal.timeout(6000)});
+    if(!res.ok) throw new Error();
+    const stations = await res.json();
+    return stations.filter(s => s.url_resolved && s.url_resolved.startsWith('http'));
+  } catch { return []; }
+}
+
+// Pick a random country code to diversify results geographically
+function randomCountryCode() {
+  const codes = ['US','GB','DE','FR','BR','JP','AU','CA','IT','ES','NL','PL','RU','IN','MX',
+                 'AR','ZA','NG','EG','TR','SE','NO','FI','DK','PT','GR','HU','RO','CZ','SK',
+                 'HR','RS','BG','UA','BY','KZ','UZ','TH','VN','KR','PH','ID','MY','PK','BD'];
+  return codes[Math.floor(Math.random()*codes.length)];
+}
+
+async function fetchStations(attempt=0) {
+  if(attempt >= API_HOSTS.length*2) return false;
+  try {
+    // Alternate between random global fetch and country-targeted fetch
+    const useCountry = Math.random() > 0.5;
+    let stations = [];
+
+    if (useCountry) {
+      const cc = randomCountryCode();
+      const url = `${apiHost}/json/stations/search?limit=100&hidebroken=true&order=random&offset=${randomOffset()}&countrycode=${cc}`;
+      const res = await fetch(url, {signal: AbortSignal.timeout(6000)});
+      if(res.ok) stations = await res.json();
+    }
+
+    // If country fetch empty or we chose global, do global fetch
+    if (stations.length === 0) {
+      stations = await fetchFromRadioBrowser();
+    }
+
+    const fresh = stations.filter(s =>
+      s.url_resolved &&
+      s.url_resolved.startsWith('http') &&
+      !stationPool.find(p => p.url_resolved === s.url_resolved) // no duplicates
+    );
+
+    if(fresh.length === 0) throw new Error('empty');
+
+    // Shuffle before adding to pool for extra randomness
+    stationPool = shuffle([...stationPool, ...fresh]).slice(-300);
+    poolIndex = Math.min(poolIndex, stationPool.length - 1);
     return true;
   } catch(e) {
-    const idx=API_HOSTS.indexOf(apiHost);
-    apiHost=API_HOSTS[(idx+1)%API_HOSTS.length];
+    const idx = API_HOSTS.indexOf(apiHost);
+    apiHost = API_HOSTS[(idx+1) % API_HOSTS.length];
     return fetchStations(attempt+1);
   }
 }
