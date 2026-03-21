@@ -1,4 +1,4 @@
-const CACHE = 'radios-v1';
+const CACHE = 'radios-v2';
 const ASSETS = [
   '/Radios/',
   '/Radios/index.html',
