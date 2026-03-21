@@ -646,8 +646,26 @@ body.trash-mode .rec-entry { padding-right: 6px; }
 #recordingsWrap h3 { padding-right: 0; }
 #trashBtn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
 
+
+/* iOS — Web Audio knobs inactive */
+body.ios-device .knob-wrap { opacity: 0.5; }
+body.ios-device .knob-wrap::after {
+  content: 'iOS';
+  position: absolute; bottom: -18px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 7px; color: #aaa;
+  font-family: var(--font-optima);
+  white-space: nowrap;
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Radios">
+  <link rel="apple-touch-icon" href="icon-512.png">
 </head>
 <body>
 
@@ -737,7 +755,7 @@ let gainSaveTimer = null;
 function normalizerOnPlay(station) {
   const preferred = stationGains[station.url_resolved];
   const vol = preferred !== undefined ? preferred : baseVolume;
-  if (audioChainReady && gainNode) {
+  if (audioChainReady && gainNode && !isIOS) {
     gainNode.gain.value = vol;
     audio.volume = 1;
   } else {
@@ -761,8 +779,15 @@ let gainNode = null, bassFilter = null, midFilter = null, trebFilter = null;
 let pannerNode = null, analyserNode = null;
 let audioChainReady = false, useRealEQ = false;
 
+// iOS Safari blocks createMediaElementSource on streams
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
 function initAudioChain() {
   if (audioChainReady) return;
+  if (isIOS) {
+    console.log('iOS detected — Web Audio chain disabled, using direct audio.volume');
+    return;
+  }
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     mediaSource  = audioCtx.createMediaElementSource(audio);
@@ -860,11 +885,11 @@ function setNeedle(pct) {
 function randomNeedle() { return 6+Math.random()*86; }
 function onVolChange(val) {
   const v = val/100;
-  if (audioChainReady && gainNode) {
+  if (audioChainReady && gainNode && !isIOS) {
     gainNode.gain.value = v;
-    audio.volume = 1; // let gainNode handle volume
+    audio.volume = 1;
   } else {
-    audio.volume = v;
+    audio.volume = v; // iOS: direct volume control
   }
   normalizerOnVolumeChange(val);
   setStation('VOL '+val+'%','');
@@ -1327,6 +1352,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', async ()=>{
+  if (isIOS) document.body.classList.add('ios-device');
+  // Register service worker for PWA
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('SW registered'))
+      .catch(e => console.warn('SW failed:', e));
+  }
   startVU();
   const {data:{session}}=await _sb.auth.getSession();
   if(session?.user) {
