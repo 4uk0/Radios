@@ -11,7 +11,7 @@
 html, body {
   margin: 0;
   background: #ffffff;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   min-height: 100vh;
   font-family: 'Courier New', monospace;
   padding: 0 0 40px;
@@ -20,7 +20,7 @@ html, body {
   position: relative;
   width: min(98vw, 1080px);
   user-select: none;
-  margin-top: 10px;
+  margin-top: 0;
 }
 .wrapper img { width: 100%; display: block; pointer-events: none; }
 .overlay { position: absolute; inset: 0; pointer-events: none; }
@@ -835,6 +835,49 @@ body.dark-mode #boomImgDark {
   );
 }
 
+
+/* ── FILTER SECTIONS ── */
+.menu-section { border-top: 1px solid #eee; padding-top: 10px; margin-top: 2px; }
+body.dark-mode .menu-section { border-top-color: #333; }
+.menu-section-body { display: none; padding: 6px 0 4px; max-height: 200px; overflow-y: auto; }
+.menu-section-body.open { display: block; }
+.filter-checkbox-row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 2px; cursor: pointer;
+  font-family: Optima, Candara, sans-serif; font-size: 13px; color: #444;
+  border-radius: 4px; transition: background 0.1s;
+}
+.filter-checkbox-row:hover { background: #f5f5f5; }
+body.dark-mode .filter-checkbox-row { color: #bbb; }
+body.dark-mode .filter-checkbox-row:hover { background: #2a2a2a; }
+.filter-checkbox-row input[type="checkbox"] { accent-color: #555; width: 14px; height: 14px; flex-shrink: 0; }
+/* ── FILTER KNOBS ── */
+.filter-knob-wrap-outer { }
+@media (max-width: 700px) { .filter-knob-wrap-outer { display: none !important; } }
+.filter-knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.filter-knob-ring { width: clamp(10px,1.8vw,20px); height: clamp(10px,1.8vw,20px); border-radius: 50%; background: radial-gradient(circle at 35% 28%, #666 0%, #333 40%, #111 100%); border: 1.5px solid #222; position: relative; box-shadow: 1px 2px 5px rgba(0,0,0,0.7), inset 0 1px 2px rgba(255,255,255,0.15); transition: box-shadow 0.2s; }
+.filter-knob-dot { position: absolute; left: 50%; top: 12%; width: 2px; height: 28%; background: #666; border-radius: 1px; transform: translateX(-50%); }
+.filter-knob-label { font-family: 'Courier New', monospace; font-size: clamp(5px,0.75vw,7px); color: rgba(150,150,150,0.8); letter-spacing: 1px; transition: color 0.2s; }
+.filter-knob-wrap.active .filter-knob-ring { background: radial-gradient(circle at 35% 28%, #55bb55 0%, #228822 40%, #114411 100%); border-color: #33aa33; box-shadow: 1px 2px 5px rgba(0,0,0,0.7), 0 0 8px rgba(0,200,80,0.7), 0 0 16px rgba(0,200,80,0.3), inset 0 1px 2px rgba(255,255,255,0.2); }
+.filter-knob-wrap.active .filter-knob-dot { background: #aaffaa; box-shadow: 0 0 3px rgba(100,255,100,0.8); }
+.filter-knob-wrap.active .filter-knob-label { color: #44dd44; }
+
+
+/* EQ peak indicator */
+.eq-bar {
+  position: relative;
+}
+.eq-bar::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: #00ff88;
+  bottom: var(--peak, 0%);
+  opacity: 0.8;
+  box-shadow: 0 0 4px #00ff88;
+  transition: bottom 0.05s;
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
@@ -893,9 +936,20 @@ body.dark-mode #boomImgDark {
     <div class="knob-wrap" id="kMid" style="left:28.818%;top:42.783%;width:3.728%;height:5.158%;"  title="Mid"     style="left:28.59%;top:43.126%;width:3.5%;height:5.25%;"><div class="knob-ring"><div class="knob-dot"></div></div><div class="knob-label">MID</div></div>
     <div class="knob-wrap" id="kTreb" style="left:33.659%;top:42.613%;width:3.728%;height:5.329%;" title="Treble"  style="left:33.318%;top:43.126%;width:3.5%;height:5.25%;"><div class="knob-ring"><div class="knob-dot"></div></div><div class="knob-label">TREB</div></div>
     <div class="knob-wrap" id="kBal" style="left:72.717%;top:42.955%;width:3.5%;height:5.5%;"  title="Balance" style="left:72.489%;top:43.126%;width:3.5%;height:5.25%;"><div class="knob-ring"><div class="knob-dot"></div></div><div class="knob-label">BAL</div></div>
+    <!-- Filter knobs G/R -->
+    <div class="filter-knob-wrap-outer" style="position:absolute;left:61.81%;top:42.80%;width:3%;height:8%;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:18%;opacity:1;">
+      <div class="filter-knob-wrap" id="filterKnobGenre" onclick="toggleFilterKnob('genre')" title="Genre filter">
+        <div class="filter-knob-ring"><div class="filter-knob-dot"></div></div>
+        <span class="filter-knob-label">G</span>
+      </div>
+      <div class="filter-knob-wrap" id="filterKnobRegion" onclick="toggleFilterKnob('region')" title="Region filter">
+        <div class="filter-knob-ring"><div class="filter-knob-dot"></div></div>
+        <span class="filter-knob-label">R</span>
+      </div>
+    </div>
 
     <!-- Cassette deck -->
-    <div id="deckInfo" style="left:42.4%;top:58.883%;width:14.57%;height:8.602%;">
+    <div id="deckInfo" style="left:41.75%;top:58.883%;width:16.5%;height:10.0%;">
       <div class="deck-line main" id="deckMain">— — —</div>
       <div class="deck-line sub" id="deckSub"></div>
     </div>
@@ -923,7 +977,8 @@ document.getElementById('boomImg').src = 'data:image/png;base64,/9j/4AAQSkZJRgAB
 
 // ── STATE ──
 let isPlaying=false, vuInt=null;
-let stationPool=[], poolIndex=0, currentStation=null;
+const filterState = { genre: { active: false, selected: [] }, region: { active: false, selected: [] } };
+let currentStation=null;
 let recordings=[], playToken=0, currentUser=null;
 const audio = document.getElementById('radioAudio');
 audio.volume = 0.7;
@@ -1013,33 +1068,52 @@ function applyKnobToAudio(knobId, angleDeg) {
 
 // ── EQ ──
 const eqState = Array.from({length:14}, () => 10 + Math.random()*60);
+const eqPeak      = Array.from({length:14}, ()=>0);
+const eqPeakTimer = Array.from({length:14}, ()=>0);
+const PEAK_HOLD = 8;
+const PEAK_DECAY = 2;
 const eqVel   = Array.from({length:14}, () => (Math.random()-0.5)*8);
 function animEQ() {
-  // Use real frequency data if Web Audio chain is active
+  const bars = document.querySelectorAll('.eq-bar');
+
+  // Real analyser data
   if (useRealEQ && analyserNode && isPlaying) {
     const dataArr = new Uint8Array(analyserNode.frequencyBinCount);
     analyserNode.getByteFrequencyData(dataArr);
-    const bars = document.querySelectorAll('.eq-bar');
     const step = Math.max(1, Math.floor(dataArr.length / bars.length));
     bars.forEach((b, i) => {
-      const val = dataArr[Math.min(i * step, dataArr.length-1)] || 0;
-      b.style.height = Math.max(3, (val / 255) * 96) + '%';
+      const raw = dataArr[Math.min(i*step, dataArr.length-1)] || 0;
+      const h = Math.max(3, (raw/255)*96);
+      if (h >= eqPeak[i]) { eqPeak[i]=h; eqPeakTimer[i]=PEAK_HOLD; }
+      else if (eqPeakTimer[i]>0) eqPeakTimer[i]--;
+      else eqPeak[i] = Math.max(h, eqPeak[i]-PEAK_DECAY);
+      b.style.height = h+'%';
+      b.style.setProperty('--peak', eqPeak[i]+'%');
     });
     return;
   }
-  // Physics simulation fallback
-  document.querySelectorAll('.eq-bar').forEach((b,i) => {
+
+  // Physics simulation — dramatic with frequency curve
+  bars.forEach((b, i) => {
     if (isPlaying) {
-      const target = 8 + Math.random()*85*(1-Math.abs(i-6)*0.04);
-      eqVel[i] = eqVel[i]*0.6 + (target-eqState[i])*0.3;
-      eqState[i] = Math.max(4, Math.min(98, eqState[i]+eqVel[i]));
+      const freqBoost = i < 3 ? 1.3 : i > 10 ? 1.15 : 0.9;
+      const spike = Math.random() < 0.06 ? Math.random()*40 : 0;
+      const target = spike + (10 + Math.random()*80*freqBoost);
+      eqVel[i] = eqVel[i]*0.5 + (target - eqState[i])*0.45;
+      eqState[i] = Math.max(3, Math.min(98, eqState[i]+eqVel[i]));
+      if (eqState[i] >= eqPeak[i]) { eqPeak[i]=eqState[i]; eqPeakTimer[i]=PEAK_HOLD; }
+      else if (eqPeakTimer[i]>0) eqPeakTimer[i]--;
+      else eqPeak[i] = Math.max(eqState[i], eqPeak[i]-PEAK_DECAY);
     } else {
-      eqState[i] = Math.max(2, eqState[i]*0.85);
+      eqState[i] = Math.max(2, eqState[i]*0.8);
+      eqPeak[i]  = Math.max(2, eqPeak[i]*0.85);
     }
     b.style.height = eqState[i]+'%';
+    b.style.setProperty('--peak', eqPeak[i]+'%');
   });
 }
-function startVU() { if (!vuInt) vuInt = setInterval(animEQ,100); }
+
+function startVU() { if (!vuInt) vuInt = setInterval(animEQ,60); }
 function stopVU()  { clearInterval(vuInt); vuInt=null; document.querySelectorAll('.eq-bar').forEach(b=>b.style.height='3%'); }
 
 // ── DISPLAYS ──
@@ -1113,7 +1187,6 @@ function updateMediaSession(station) {
     navigator.mediaSession.playbackState = 'paused';
   });
   navigator.mediaSession.setActionHandler('previoustrack', () => {
-    poolIndex = Math.max(0, poolIndex - 2);
     playRandomStation();
   });
   navigator.mediaSession.setActionHandler('nexttrack', () => {
@@ -1130,13 +1203,55 @@ function updateMediaSession(station) {
 }
 
 // ── RADIO API ──
-const API_HOSTS=['https://de1.api.radio-browser.info','https://nl1.api.radio-browser.info','https://at1.api.radio-browser.info'];
-let apiHost=API_HOSTS[0];
+const API_HOSTS = ['https://de1.api.radio-browser.info','https://nl1.api.radio-browser.info','https://at1.api.radio-browser.info'];
+let apiHost = API_HOSTS[0];
 
-// Random offset so every device/session gets a different slice of the database
+// ── POOL ARCHITECTURE ──
+// Three separate pools, never mixed
+const pools = {
+  random:   [],   // pure random, no filter
+  filtered: [],   // filtered by genre/region
+};
+let activePool = 'random';       // which pool we're drawing from
+const recentlyPlayed = new Set(); // URLs played this session — never repeat
+const POOL_MAX  = 100;           // max stations per pool
+const POOL_MIN  = 8;             // refill threshold
+const RECENT_MAX = 60;           // max recently played to remember
+const recentQueue = [];          // ordered queue to evict oldest from Set
+
+function currentPool() { return pools[activePool]; }
+
+function addToPool(type, stations) {
+  const pool = pools[type];
+  const fresh = stations.filter(s =>
+    s.url_resolved &&
+    s.url_resolved.startsWith('http') &&
+    !recentlyPlayed.has(s.url_resolved) &&
+    !pool.find(p => p.url_resolved === s.url_resolved)
+  );
+  pools[type] = shuffle([...pool, ...fresh]).slice(-POOL_MAX);
+}
+
+function markPlayed(url) {
+  recentlyPlayed.add(url);
+  recentQueue.push(url);
+  if (recentQueue.length > RECENT_MAX) {
+    recentlyPlayed.delete(recentQueue.shift());
+  }
+}
+
+function getFilterActive() {
+  return (filterState.genre.active  && filterState.genre.selected.length  > 0) ||
+         (filterState.region.active && filterState.region.selected.length > 0);
+}
+
+function syncActivePool() {
+  activePool = getFilterActive() ? 'filtered' : 'random';
+}
+
+// ── FETCH HELPERS ──
 function randomOffset() { return Math.floor(Math.random() * 8000); }
 
-// Fisher-Yates shuffle
 function shuffle(arr) {
   for (let i=arr.length-1; i>0; i--) {
     const j = Math.floor(Math.random()*(i+1));
@@ -1145,30 +1260,6 @@ function shuffle(arr) {
   return arr;
 }
 
-async function fetchFromRadioBrowser() {
-  const offset = randomOffset();
-  // Use offset + random codec mix to get truly different results each time
-  const codecs = ['MP3','AAC','OGG'];
-  const codec  = codecs[Math.floor(Math.random()*codecs.length)];
-  const url = `${apiHost}/json/stations/search?limit=100&hidebroken=true&codec=${codec}&order=random&offset=${offset}`;
-  const res = await fetch(url, {signal: AbortSignal.timeout(6000)});
-  if(!res.ok) throw new Error('HTTP '+res.status);
-  const stations = await res.json();
-  return stations.filter(s => s.url_resolved && s.url_resolved.startsWith('http'));
-}
-
-async function fetchFromOpenRadio() {
-  // OpenRadio / Radio Garden proxy — different database entirely
-  try {
-    const url = `${apiHost}/json/stations/search?limit=100&hidebroken=true&order=random&offset=${randomOffset()}&countrycode=${randomCountryCode()}`;
-    const res = await fetch(url, {signal: AbortSignal.timeout(6000)});
-    if(!res.ok) throw new Error();
-    const stations = await res.json();
-    return stations.filter(s => s.url_resolved && s.url_resolved.startsWith('http'));
-  } catch { return []; }
-}
-
-// Pick a random country code to diversify results geographically
 function randomCountryCode() {
   const codes = ['US','GB','DE','FR','BR','JP','AU','CA','IT','ES','NL','PL','RU','IN','MX',
                  'AR','ZA','NG','EG','TR','SE','NO','FI','DK','PT','GR','HU','RO','CZ','SK',
@@ -1176,91 +1267,133 @@ function randomCountryCode() {
   return codes[Math.floor(Math.random()*codes.length)];
 }
 
-async function fetchStations(attempt=0) {
-  if(attempt >= API_HOSTS.length*2) return false;
+async function apiFetch(url, attempt=0) {
+  if (attempt >= API_HOSTS.length) return [];
   try {
-    // Alternate between random global fetch and country-targeted fetch
-    const useCountry = Math.random() > 0.5;
-    let stations = [];
-
-    if (useCountry) {
-      const cc = randomCountryCode();
-      const url = `${apiHost}/json/stations/search?limit=100&hidebroken=true&order=random&offset=${randomOffset()}&countrycode=${cc}`;
-      const res = await fetch(url, {signal: AbortSignal.timeout(6000)});
-      if(res.ok) stations = await res.json();
-    }
-
-    // If country fetch empty or we chose global, do global fetch
-    if (stations.length === 0) {
-      stations = await fetchFromRadioBrowser();
-    }
-
-    const fresh = stations.filter(s =>
-      s.url_resolved &&
-      s.url_resolved.startsWith('http') &&
-      !stationPool.find(p => p.url_resolved === s.url_resolved) // no duplicates
-    );
-
-    if(fresh.length === 0) throw new Error('empty');
-
-    // Shuffle before adding to pool for extra randomness
-    stationPool = shuffle([...stationPool, ...fresh]).slice(-300);
-    poolIndex = Math.min(poolIndex, stationPool.length - 1);
-    return true;
+    const res = await fetch(url.replace(API_HOSTS[0], apiHost), {signal: AbortSignal.timeout(6000)});
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    return await res.json();
   } catch(e) {
     const idx = API_HOSTS.indexOf(apiHost);
     apiHost = API_HOSTS[(idx+1) % API_HOSTS.length];
-    return fetchStations(attempt+1);
+    return apiFetch(url, attempt+1);
   }
 }
 
+// ── FILTERED FETCH ──
+async function fetchFiltered() {
+  const gOn = filterState.genre.active  && filterState.genre.selected.length  > 0;
+  const rOn = filterState.region.active && filterState.region.selected.length > 0;
+
+  // Pick random genre and/or random country from selected continents
+  let tag = '', cc = '';
+  if (gOn) {
+    const g = filterState.genre.selected;
+    tag = g[Math.floor(Math.random()*g.length)];
+  }
+  if (rOn) {
+    const continents = filterState.region.selected;
+    const cont = continents[Math.floor(Math.random()*continents.length)];
+    const codes = cont.split(',');
+    cc = codes[Math.floor(Math.random()*codes.length)].trim();
+  }
+
+  let url = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}`;
+  if (tag) url += `&tag=${encodeURIComponent(tag)}`;
+  if (cc)  url += `&countrycode=${cc}`;
+
+  let stations = await apiFetch(url);
+
+  // Fallback: if too few results, try without one constraint
+  if (stations.length < 15 && tag && cc) {
+    console.log('Filter too narrow, relaxing constraints...');
+    const urlRelaxed = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}&tag=${encodeURIComponent(tag)}`;
+    stations = await apiFetch(urlRelaxed);
+  }
+
+  console.log(`Filtered fetch [${tag||'any genre'}/${cc||'any region'}]: ${stations.length} stations`);
+  return stations;
+}
+
+// ── RANDOM FETCH ──
+async function fetchRandom() {
+  const useCountry = Math.random() > 0.5;
+  if (useCountry) {
+    const cc  = randomCountryCode();
+    const url = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}&countrycode=${cc}`;
+    const stations = await apiFetch(url);
+    if (stations.length > 0) return stations;
+  }
+  // Global fetch with random codec
+  const codec = ['MP3','AAC','OGG'][Math.floor(Math.random()*3)];
+  const url   = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&codec=${codec}&order=random&offset=${randomOffset()}`;
+  return await apiFetch(url);
+}
+
+// ── POOL REFILL ──
+let isFetching = false;
+async function refillPool(type) {
+  if (isFetching) return;
+  isFetching = true;
+  try {
+    const stations = type === 'filtered' ? await fetchFiltered() : await fetchRandom();
+    addToPool(type, stations);
+  } finally {
+    isFetching = false;
+  }
+}
+
+// ── PLAY RANDOM STATION ──
 async function playRandomStation() {
-  const token=++playToken;
-  audio.pause(); audio.src=''; isPlaying=false;
+  const token = ++playToken;
+  audio.pause(); audio.src = ''; isPlaying = false;
   clearTimeout(audio._stallTimer);
   document.getElementById('wrapper').classList.remove('playing');
   document.getElementById('btnPlay').classList.remove('pressed');
   stopVU();
-  if(stationPool.length-poolIndex<5) {
+
+  syncActivePool();
+  const pool = currentPool();
+
+  if (pool.length < POOL_MIN) {
     setStation('SCANNING...','blink');
-    const ok=await fetchStations();
-    if(!ok||token!==playToken) return;
-    if(stationPool.length===0) { setStation('NO SIGNAL','blink'); return; }
+    await refillPool(activePool);
+    if (token !== playToken) return;
+    if (currentPool().length === 0) { setStation('NO SIGNAL','blink'); return; }
   }
-  const station=stationPool[poolIndex%stationPool.length];
-  poolIndex++; currentStation=station;
+
+  // Pre-refill in background if getting low
+  if (currentPool().length < POOL_MIN * 2) refillPool(activePool);
+
+  const station = currentPool().shift(); // take from front (already shuffled)
+  currentStation = station;
+  markPlayed(station.url_resolved);
+
   setNeedle(randomNeedle()); setStation('TUNING...','blink');
-  const skipTimer=setTimeout(()=>{ if(token===playToken&&!isPlaying) { setStation('SKIP...','blink'); playRandomStation(); } },8000);
-  audio.src=station.url_resolved;
-  audio.volume=document.getElementById('volSlider').value/100;
+  const skipTimer = setTimeout(()=>{ if(token===playToken&&!isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }},8000);
+  audio.src = station.url_resolved;
+  audio.volume = document.getElementById('volSlider').value/100;
   try {
-    // Init Web Audio on first user gesture
-    initAudioChain();
-    resumeAudioCtx();
+    initAudioChain(); resumeAudioCtx();
     await audio.play();
-    if(token!==playToken) return;
+    if (token !== playToken) return;
     useRealEQ = audioChainReady;
     clearTimeout(skipTimer);
-    isPlaying=true;
+    isPlaying = true;
     document.getElementById('wrapper').classList.add('playing');
     document.getElementById('btnPlay').classList.add('pressed');
     startVU();
-    const flag=countryFlag(station.countrycode);
-    const sName=station.name||'UNKNOWN';
-    showDeck(sName,(flag?flag+' ':'')+( station.country||''));
+    const flag = countryFlag(station.countrycode);
+    showDeck(station.name||'UNKNOWN',(flag?flag+' ':'')+( station.country||''));
     setStation('ON AIR','');
     normalizerOnPlay(station);
     updateMediaSession(station);
-    updateMediaSession(station);
-  
     clearTimeout(audio._stallTimer);
-    audio._stallTimer=setTimeout(()=>{ if(token===playToken&&isPlaying) { setStation('SKIP...','blink'); playRandomStation(); } },6000);
+    audio._stallTimer = setTimeout(()=>{ if(token===playToken&&isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }},6000);
   } catch(e) {
     clearTimeout(skipTimer);
-    if(token!==playToken) return;
-    stationPool.splice((poolIndex-1)%stationPool.length,1);
-    poolIndex=Math.max(0,poolIndex-1);
-    setTimeout(playRandomStation,200);
+    if (token !== playToken) return;
+    setTimeout(playRandomStation, 200);
   }
 }
 
@@ -1303,7 +1436,6 @@ function updateMediaSession(station) {
   });
   navigator.mediaSession.setActionHandler('nexttrack', () => playRandomStation());
   navigator.mediaSession.setActionHandler('previoustrack', () => {
-    poolIndex = Math.max(0, poolIndex - 2);
     playRandomStation();
   });
   navigator.mediaSession.setActionHandler('stop', () => {
@@ -1402,10 +1534,78 @@ function initDarkMode() {
 }
 
 
+// ── FILTERS ──
+function onFilterToggle(type, on) {
+  filterState[type].active = on;
+  localStorage.setItem('radioFilter', JSON.stringify(filterState));
+  const sec = document.getElementById(type==='genre'?'genreSection':'regionSection');
+  if (sec) sec.classList.toggle('open', on);
+  const knob = document.getElementById(type==='genre'?'filterKnobGenre':'filterKnobRegion');
+  if (knob) knob.classList.toggle('active', on);
+  // Clear filtered pool so it refetches with new settings
+  pools.filtered = [];
+  const label = on?(type==='genre'?'GENRE ON':'REGION ON'):(type==='genre'?'GENRE OFF':'REGION OFF');
+  setStation(label,'');
+  setTimeout(()=>setStation(isPlaying?'ON AIR':'PRESS ►',''),1500);
+  // Pre-fetch filtered pool in background
+  if (on) refillPool('filtered');
+}
+function toggleFilterKnob(type) {
+  const on = !filterState[type].active;
+  const tog = document.getElementById(type==='genre'?'genreToggle':'regionToggle');
+  if (tog) tog.checked = on;
+  onFilterToggle(type, on);
+}
+function updateFilter(type, cb) {
+  const sel = filterState[type].selected;
+  if (cb.checked) { if (!sel.includes(cb.value)) sel.push(cb.value); }
+  else { const i=sel.indexOf(cb.value); if(i>-1) sel.splice(i,1); }
+  if (sel.length>0 && !filterState[type].active) {
+    filterState[type].active=true;
+    const tog=document.getElementById(type==='genre'?'genreToggle':'regionToggle');
+    if(tog) tog.checked=true;
+    const knob=document.getElementById(type==='genre'?'filterKnobGenre':'filterKnobRegion');
+    if(knob) knob.classList.add('active');
+  }
+  pools.filtered = [];
+  localStorage.setItem('radioFilter',JSON.stringify(filterState));
+}
+function buildFilteredUrl() {
+  console.log('Filter active — genre:', filterState.genre.selected, 'region:', filterState.region.selected);
+  const gOn=filterState.genre.active&&filterState.genre.selected.length>0;
+  const rOn=filterState.region.active&&filterState.region.selected.length>0;
+  let tag='',cc='';
+  if(gOn){const g=filterState.genre.selected;tag=g[Math.floor(Math.random()*g.length)];}
+  if(rOn){const continents=filterState.region.selected;const cont=continents[Math.floor(Math.random()*continents.length)];const codes=cont.split(',');cc=codes[Math.floor(Math.random()*codes.length)].trim();}
+  let url=`${apiHost}/json/stations/search?limit=100&hidebroken=true&order=random&offset=${randomOffset()}`;
+  if(tag) url+=`&tag=${encodeURIComponent(tag)}`;
+  if(cc)  url+=`&countrycode=${cc}`;
+  return url;
+}
+function initFilters() {
+  const saved=localStorage.getItem('radioFilter');
+  if(!saved) return;
+  try {
+    const f=JSON.parse(saved);
+    ['genre','region'].forEach(type=>{
+      if(!f[type]) return;
+      filterState[type].active=f[type].active||false;
+      filterState[type].selected=f[type].selected||[];
+      const tog=document.getElementById(type==='genre'?'genreToggle':'regionToggle');
+      if(tog) tog.checked=filterState[type].active;
+      const sec=document.getElementById(type==='genre'?'genreSection':'regionSection');
+      if(sec) sec.classList.toggle('open',filterState[type].active);
+      const knob=document.getElementById(type==='genre'?'filterKnobGenre':'filterKnobRegion');
+      if(knob) knob.classList.toggle('active',filterState[type].active);
+      filterState[type].selected.forEach(val=>{const cb=document.querySelector(`input[value="${val}"]`);if(cb) cb.checked=true;});
+    });
+  } catch(e){}
+}
+
 // ── TRANSPORT ──
 document.getElementById('btnPlay').addEventListener('click',()=>playRandomStation());
 document.getElementById('btnFF').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
-document.getElementById('btnRew').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); poolIndex=Math.max(0,poolIndex-2); playRandomStation(); });
+document.getElementById('btnRew').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
 document.getElementById('btnStop').addEventListener('click',function(){
   audio.pause(); isPlaying=false; clearTimeout(audio._stallTimer);
   document.getElementById('wrapper').classList.remove('playing');
@@ -1572,7 +1772,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function pb(id,fn) { const b=document.getElementById(id); if(b) b.addEventListener('click',fn); }
   pb('portBtnPlay',()=>playRandomStation());
   pb('portBtnFF',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
-  pb('portBtnRew',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); poolIndex=Math.max(0,poolIndex-2); playRandomStation(); });
+  pb('portBtnRew',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
   pb('portBtnStop',function(){ audio.pause(); isPlaying=false; clearTimeout(audio._stallTimer); document.getElementById('wrapper').classList.remove('playing'); ['btnPlay','portBtnPlay'].forEach(function(id){ const b=document.getElementById(id); if(b) b.classList.remove('pressed'); }); stopVU(); setStation('STOPPED',''); this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); });
   pb('portBtnRec',function(){
   if(!currentStation) { setStation('NO STATION','blink'); return; }
@@ -1589,6 +1789,7 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('DOMContentLoaded', async ()=>{
   if (isIOS) document.body.classList.add('ios-device');
   initDarkMode();
+  initFilters();
   // Register service worker only on real hosting (not localhost/preview)
   if ('serviceWorker' in navigator && !window.location.hostname.includes('claudeusercontent')) {
     navigator.serviceWorker.register('sw.js')
@@ -1646,15 +1847,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 </div>
 
 <div id="menuPanel">
-  <!-- Single dark mode toggle at top -->
-  <div class="dark-toggle-row" style="padding-bottom:10px;border-bottom:1px solid #eee;margin-bottom:8px;">
-    <span class="dark-toggle-label">Dark mode</span>
-    <label class="dark-toggle">
-      <input type="checkbox" id="darkToggle" onchange="toggleDarkMode(this.checked)">
-      <span class="dark-toggle-slider"></span>
-    </label>
-  </div>
-  <div id="loginView" style="display:flex;flex-direction:column;gap:12px;">
+  <div id="loginView" style="display:flex;flex-direction:column;gap:10px;">
     <div class="menu-title">Sign in</div>
     <input class="menu-input" id="loginUser" type="text" placeholder="Username" autocomplete="username">
     <input class="menu-input" id="loginPass" type="password" placeholder="Password" autocomplete="current-password">
@@ -1674,6 +1867,55 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     <div id="userBadge">Signed in as <strong id="userLabel"></strong></div>
     <button class="menu-btn secondary" onclick="doLogout()">Sign out</button>
   </div>
+
+  <!-- GENRE -->
+  <div class="menu-section">
+    <div class="dark-toggle-row">
+      <span class="dark-toggle-label">Genre</span>
+      <label class="dark-toggle"><input type="checkbox" id="genreToggle" onchange="onFilterToggle('genre',this.checked)"><span class="dark-toggle-slider"></span></label>
+    </div>
+    <div class="menu-section-body" id="genreSection">
+      <label class="filter-checkbox-row"><input type="checkbox" value="jazz" onchange="updateFilter('genre',this)"> Jazz</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="rock" onchange="updateFilter('genre',this)"> Rock</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="pop" onchange="updateFilter('genre',this)"> Pop</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="classical" onchange="updateFilter('genre',this)"> Classical</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="news" onchange="updateFilter('genre',this)"> News</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="hip-hop" onchange="updateFilter('genre',this)"> Hip-Hop</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="electronic" onchange="updateFilter('genre',this)"> Electronic</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="folk" onchange="updateFilter('genre',this)"> Folk</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="ambient" onchange="updateFilter('genre',this)"> Ambient</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="latin" onchange="updateFilter('genre',this)"> Latin</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="metal" onchange="updateFilter('genre',this)"> Metal</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="world" onchange="updateFilter('genre',this)"> World</label>
+    </div>
+  </div>
+
+  <!-- REGION -->
+  <div class="menu-section">
+    <div class="dark-toggle-row">
+      <span class="dark-toggle-label">Region</span>
+      <label class="dark-toggle"><input type="checkbox" id="regionToggle" onchange="onFilterToggle('region',this.checked)"><span class="dark-toggle-slider"></span></label>
+    </div>
+    <div class="menu-section-body" id="regionSection">
+      <label class="filter-checkbox-row"><input type="checkbox" value="GB,DE,FR,IT,ES,NL,PL,SE,NO,FI,DK,PT,GR,BE,AT,CH" onchange="updateFilter('region',this)"> Europe</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="US,CA,MX" onchange="updateFilter('region',this)"> North America</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="BR,AR,CL,CO,PE,VE" onchange="updateFilter('region',this)"> South America</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="NG,ZA,EG,KE,GH,ET,SN" onchange="updateFilter('region',this)"> Africa</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="JP,KR,CN,IN,TH,VN,ID,PH,MY,PK,BD" onchange="updateFilter('region',this)"> Asia</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="AU,NZ" onchange="updateFilter('region',this)"> Oceania</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="TR,SA,AE,IR,IQ,LB,IL,JO" onchange="updateFilter('region',this)"> Middle East</label>
+      <label class="filter-checkbox-row"><input type="checkbox" value="RU,UA,PL,RO,HU,CZ,SK,BG,HR,RS,BY" onchange="updateFilter('region',this)"> Eastern Europe</label>
+    </div>
+  </div>
+
+  <!-- DARK MODE -->
+  <div class="menu-section">
+    <div class="dark-toggle-row">
+      <span class="dark-toggle-label">Dark mode</span>
+      <label class="dark-toggle"><input type="checkbox" id="darkToggle" onchange="toggleDarkMode(this.checked)"><span class="dark-toggle-slider"></span></label>
+    </div>
+  </div>
+
 </div>
 
 <div id="recordingsWrap">
