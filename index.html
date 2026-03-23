@@ -823,17 +823,7 @@ body.dark-mode #menuBtn {
 
 
 
-/* ── DARK MODE IMAGE EDGE BLENDING ── */
-body.dark-mode #boomImgDark {
-  -webkit-mask-image: radial-gradient(
-    ellipse 85% 80% at 50% 50%,
-    black 50%, transparent 100%
-  );
-  mask-image: radial-gradient(
-    ellipse 85% 80% at 50% 50%,
-    black 50%, transparent 100%
-  );
-}
+
 
 
 /* ── FILTER SECTIONS ── */
@@ -1207,46 +1197,39 @@ const API_HOSTS = ['https://de1.api.radio-browser.info','https://nl1.api.radio-b
 let apiHost = API_HOSTS[0];
 
 // ── POOL ARCHITECTURE ──
-// Three separate pools, never mixed
 const pools = {
-  random:   [],   // pure random, no filter
-  filtered: [],   // filtered by genre/region
+  random:   [],
+  filtered: [],
 };
-let activePool = 'random';       // which pool we're drawing from
-const recentlyPlayed = new Set(); // URLs played this session — never repeat
-const POOL_MAX  = 100;           // max stations per pool
-const POOL_MIN  = 8;             // refill threshold
-const RECENT_MAX = 60;           // max recently played to remember
-const recentQueue = [];          // ordered queue to evict oldest from Set
+let activePool = 'random';
+const recentlyPlayed = new Set();
+const recentQueue    = [];
+const POOL_MAX   = 80;
+const POOL_MIN   = 5;
+const RECENT_MAX = 40;
 
-function currentPool() { return pools[activePool]; }
+function currentPool()  { return pools[activePool]; }
+function syncActivePool() {
+  activePool = (filterState.genre.active && filterState.genre.selected.length > 0) ||
+               (filterState.region.active && filterState.region.selected.length > 0)
+               ? 'filtered' : 'random';
+}
 
 function addToPool(type, stations) {
-  const pool = pools[type];
   const fresh = stations.filter(s =>
     s.url_resolved &&
     s.url_resolved.startsWith('http') &&
     !recentlyPlayed.has(s.url_resolved) &&
-    !pool.find(p => p.url_resolved === s.url_resolved)
+    !pools[type].find(p => p.url_resolved === s.url_resolved)
   );
-  pools[type] = shuffle([...pool, ...fresh]).slice(-POOL_MAX);
+  if (fresh.length === 0) return;
+  pools[type] = shuffle([...pools[type], ...fresh]).slice(-POOL_MAX);
 }
 
 function markPlayed(url) {
   recentlyPlayed.add(url);
   recentQueue.push(url);
-  if (recentQueue.length > RECENT_MAX) {
-    recentlyPlayed.delete(recentQueue.shift());
-  }
-}
-
-function getFilterActive() {
-  return (filterState.genre.active  && filterState.genre.selected.length  > 0) ||
-         (filterState.region.active && filterState.region.selected.length > 0);
-}
-
-function syncActivePool() {
-  activePool = getFilterActive() ? 'filtered' : 'random';
+  if (recentQueue.length > RECENT_MAX) recentlyPlayed.delete(recentQueue.shift());
 }
 
 // ── FETCH HELPERS ──
@@ -1270,7 +1253,7 @@ function randomCountryCode() {
 async function apiFetch(url, attempt=0) {
   if (attempt >= API_HOSTS.length) return [];
   try {
-    const res = await fetch(url.replace(API_HOSTS[0], apiHost), {signal: AbortSignal.timeout(6000)});
+    const res = await fetch(url.replace(API_HOSTS[0], apiHost), {signal: AbortSignal.timeout(5000)});
     if (!res.ok) throw new Error('HTTP '+res.status);
     return await res.json();
   } catch(e) {
@@ -1280,67 +1263,48 @@ async function apiFetch(url, attempt=0) {
   }
 }
 
-// ── FILTERED FETCH ──
 async function fetchFiltered() {
   const gOn = filterState.genre.active  && filterState.genre.selected.length  > 0;
   const rOn = filterState.region.active && filterState.region.selected.length > 0;
-
-  // Pick random genre and/or random country from selected continents
-  let tag = '', cc = '';
-  if (gOn) {
-    const g = filterState.genre.selected;
-    tag = g[Math.floor(Math.random()*g.length)];
-  }
+  let tag='', cc='';
+  if (gOn) { const g=filterState.genre.selected; tag=g[Math.floor(Math.random()*g.length)]; }
   if (rOn) {
-    const continents = filterState.region.selected;
-    const cont = continents[Math.floor(Math.random()*continents.length)];
+    const cont = filterState.region.selected[Math.floor(Math.random()*filterState.region.selected.length)];
     const codes = cont.split(',');
     cc = codes[Math.floor(Math.random()*codes.length)].trim();
   }
-
   let url = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}`;
   if (tag) url += `&tag=${encodeURIComponent(tag)}`;
   if (cc)  url += `&countrycode=${cc}`;
-
   let stations = await apiFetch(url);
-
-  // Fallback: if too few results, try without one constraint
-  if (stations.length < 15 && tag && cc) {
-    console.log('Filter too narrow, relaxing constraints...');
-    const urlRelaxed = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}&tag=${encodeURIComponent(tag)}`;
-    stations = await apiFetch(urlRelaxed);
+  // Relax if too narrow
+  if (stations.length < 10 && tag && cc) {
+    stations = await apiFetch(`${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}&tag=${encodeURIComponent(tag)}`);
   }
-
-  console.log(`Filtered fetch [${tag||'any genre'}/${cc||'any region'}]: ${stations.length} stations`);
+  if (stations.length < 10) {
+    stations = await apiFetch(`${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}`);
+  }
   return stations;
 }
 
-// ── RANDOM FETCH ──
 async function fetchRandom() {
   const useCountry = Math.random() > 0.5;
   if (useCountry) {
     const cc  = randomCountryCode();
     const url = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}&countrycode=${cc}`;
     const stations = await apiFetch(url);
-    if (stations.length > 0) return stations;
+    if (stations.length > 5) return stations;
   }
-  // Global fetch with random codec
   const codec = ['MP3','AAC','OGG'][Math.floor(Math.random()*3)];
-  const url   = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&codec=${codec}&order=random&offset=${randomOffset()}`;
-  return await apiFetch(url);
+  return apiFetch(`${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&codec=${codec}&order=random&offset=${randomOffset()}`);
 }
 
-// ── POOL REFILL ──
-let isFetching = false;
+// ── POOL REFILL — no lock, parallel-safe ──
 async function refillPool(type) {
-  if (isFetching) return;
-  isFetching = true;
   try {
     const stations = type === 'filtered' ? await fetchFiltered() : await fetchRandom();
     addToPool(type, stations);
-  } finally {
-    isFetching = false;
-  }
+  } catch(e) { console.warn('refillPool error:', e); }
 }
 
 // ── PLAY RANDOM STATION ──
@@ -1353,24 +1317,35 @@ async function playRandomStation() {
   stopVU();
 
   syncActivePool();
-  const pool = currentPool();
 
-  if (pool.length < POOL_MIN) {
+  // Fetch if pool empty
+  if (currentPool().length === 0) {
     setStation('SCANNING...','blink');
     await refillPool(activePool);
     if (token !== playToken) return;
-    if (currentPool().length === 0) { setStation('NO SIGNAL','blink'); return; }
   }
 
-  // Pre-refill in background if getting low
+  // Still empty after fetch — try global fallback
+  if (currentPool().length === 0) {
+    const fallback = await apiFetch(`${API_HOSTS[0]}/json/stations/search?limit=40&hidebroken=true&order=random`);
+    addToPool(activePool, fallback);
+    if (token !== playToken) return;
+  }
+
+  if (currentPool().length === 0) { setStation('NO SIGNAL','blink'); return; }
+
+  // Pre-refill in background when getting low
   if (currentPool().length < POOL_MIN * 2) refillPool(activePool);
 
-  const station = currentPool().shift(); // take from front (already shuffled)
+  const station = currentPool().shift();
   currentStation = station;
   markPlayed(station.url_resolved);
 
   setNeedle(randomNeedle()); setStation('TUNING...','blink');
-  const skipTimer = setTimeout(()=>{ if(token===playToken&&!isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }},8000);
+  const skipTimer = setTimeout(()=>{
+    if(token===playToken&&!isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }
+  }, 7000);
+
   audio.src = station.url_resolved;
   audio.volume = document.getElementById('volSlider').value/100;
   try {
@@ -1389,11 +1364,14 @@ async function playRandomStation() {
     normalizerOnPlay(station);
     updateMediaSession(station);
     clearTimeout(audio._stallTimer);
-    audio._stallTimer = setTimeout(()=>{ if(token===playToken&&isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }},6000);
+    audio._stallTimer = setTimeout(()=>{
+      if(token===playToken&&isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }
+    }, 6000);
   } catch(e) {
     clearTimeout(skipTimer);
     if (token !== playToken) return;
-    setTimeout(playRandomStation, 200);
+    // Station failed — skip immediately to next
+    setTimeout(playRandomStation, 100);
   }
 }
 
