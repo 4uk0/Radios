@@ -483,9 +483,19 @@ html, body {
 
   html, body {
     justify-content: flex-start;
-    padding: 48px 0 32px;
+    padding: 0 0 32px;
     background: #ffffff;
   }
+  #topBar {
+    position: fixed;
+    top: 0; left: 0;
+    z-index: 9997;
+    background: #fff;
+  }
+  body.dark-mode #topBar { background: #5a5a5a; }
+  /* Push content below fixed topBar */
+  #portraitWrapper { margin-top: 50px; }
+  .wrapper { margin-top: 50px; }
 
   /* Hide landscape boombox */
   .wrapper { display: none; }
@@ -1195,44 +1205,8 @@ function updateMediaSession(station) {
 // ── RADIO API ──
 const API_HOSTS = ['https://de1.api.radio-browser.info','https://nl1.api.radio-browser.info','https://at1.api.radio-browser.info'];
 let apiHost = API_HOSTS[0];
+let stationPool = [], poolIndex = 0;
 
-// ── POOL ARCHITECTURE ──
-const pools = {
-  random:   [],
-  filtered: [],
-};
-let activePool = 'random';
-const recentlyPlayed = new Set();
-const recentQueue    = [];
-const POOL_MAX   = 80;
-const POOL_MIN   = 5;
-const RECENT_MAX = 40;
-
-function currentPool()  { return pools[activePool]; }
-function syncActivePool() {
-  activePool = (filterState.genre.active && filterState.genre.selected.length > 0) ||
-               (filterState.region.active && filterState.region.selected.length > 0)
-               ? 'filtered' : 'random';
-}
-
-function addToPool(type, stations) {
-  const fresh = stations.filter(s =>
-    s.url_resolved &&
-    s.url_resolved.startsWith('http') &&
-    !recentlyPlayed.has(s.url_resolved) &&
-    !pools[type].find(p => p.url_resolved === s.url_resolved)
-  );
-  if (fresh.length === 0) return;
-  pools[type] = shuffle([...pools[type], ...fresh]).slice(-POOL_MAX);
-}
-
-function markPlayed(url) {
-  recentlyPlayed.add(url);
-  recentQueue.push(url);
-  if (recentQueue.length > RECENT_MAX) recentlyPlayed.delete(recentQueue.shift());
-}
-
-// ── FETCH HELPERS ──
 function randomOffset() { return Math.floor(Math.random() * 8000); }
 
 function shuffle(arr) {
@@ -1250,22 +1224,10 @@ function randomCountryCode() {
   return codes[Math.floor(Math.random()*codes.length)];
 }
 
-async function apiFetch(url, attempt=0) {
-  if (attempt >= API_HOSTS.length) return [];
-  try {
-    const res = await fetch(url.replace(API_HOSTS[0], apiHost), {signal: AbortSignal.timeout(5000)});
-    if (!res.ok) throw new Error('HTTP '+res.status);
-    return await res.json();
-  } catch(e) {
-    const idx = API_HOSTS.indexOf(apiHost);
-    apiHost = API_HOSTS[(idx+1) % API_HOSTS.length];
-    return apiFetch(url, attempt+1);
-  }
-}
-
-async function fetchFiltered() {
+function getFilterUrl() {
   const gOn = filterState.genre.active  && filterState.genre.selected.length  > 0;
   const rOn = filterState.region.active && filterState.region.selected.length > 0;
+  if (!gOn && !rOn) return null;
   let tag='', cc='';
   if (gOn) { const g=filterState.genre.selected; tag=g[Math.floor(Math.random()*g.length)]; }
   if (rOn) {
@@ -1273,38 +1235,47 @@ async function fetchFiltered() {
     const codes = cont.split(',');
     cc = codes[Math.floor(Math.random()*codes.length)].trim();
   }
-  let url = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}`;
+  let url = `${apiHost}/json/stations/search?limit=80&hidebroken=true&order=random&offset=${randomOffset()}`;
   if (tag) url += `&tag=${encodeURIComponent(tag)}`;
   if (cc)  url += `&countrycode=${cc}`;
-  let stations = await apiFetch(url);
-  // Relax if too narrow
-  if (stations.length < 10 && tag && cc) {
-    stations = await apiFetch(`${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}&tag=${encodeURIComponent(tag)}`);
-  }
-  if (stations.length < 10) {
-    stations = await apiFetch(`${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}`);
-  }
-  return stations;
+  return url;
 }
 
-async function fetchRandom() {
-  const useCountry = Math.random() > 0.5;
-  if (useCountry) {
-    const cc  = randomCountryCode();
-    const url = `${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&order=random&offset=${randomOffset()}&countrycode=${cc}`;
-    const stations = await apiFetch(url);
-    if (stations.length > 5) return stations;
-  }
-  const codec = ['MP3','AAC','OGG'][Math.floor(Math.random()*3)];
-  return apiFetch(`${API_HOSTS[0]}/json/stations/search?limit=60&hidebroken=true&codec=${codec}&order=random&offset=${randomOffset()}`);
-}
-
-// ── POOL REFILL — no lock, parallel-safe ──
-async function refillPool(type) {
+async function fetchStations(attempt=0) {
+  if (attempt >= API_HOSTS.length*2) return false;
   try {
-    const stations = type === 'filtered' ? await fetchFiltered() : await fetchRandom();
-    addToPool(type, stations);
-  } catch(e) { console.warn('refillPool error:', e); }
+    // Use filter URL if active, otherwise random
+    const filterUrl = getFilterUrl();
+    let url;
+    if (filterUrl) {
+      url = filterUrl;
+    } else {
+      const useCountry = Math.random() > 0.5;
+      if (useCountry) {
+        const cc = randomCountryCode();
+        url = `${apiHost}/json/stations/search?limit=80&hidebroken=true&order=random&offset=${randomOffset()}&countrycode=${cc}`;
+      } else {
+        const codec = ['MP3','AAC','OGG'][Math.floor(Math.random()*3)];
+        url = `${apiHost}/json/stations/search?limit=80&hidebroken=true&codec=${codec}&order=random&offset=${randomOffset()}`;
+      }
+    }
+
+    const res = await fetch(url, {signal: AbortSignal.timeout(6000)});
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const stations = await res.json();
+    const fresh = stations.filter(s =>
+      s.url_resolved &&
+      s.url_resolved.startsWith('http') &&
+      !stationPool.find(p => p.url_resolved === s.url_resolved)
+    );
+    if (fresh.length === 0) throw new Error('empty');
+    stationPool = shuffle([...stationPool, ...fresh]).slice(-200);
+    return true;
+  } catch(e) {
+    const idx = API_HOSTS.indexOf(apiHost);
+    apiHost = API_HOSTS[(idx+1) % API_HOSTS.length];
+    return fetchStations(attempt+1);
+  }
 }
 
 // ── PLAY RANDOM STATION ──
@@ -1316,35 +1287,20 @@ async function playRandomStation() {
   document.getElementById('btnPlay').classList.remove('pressed');
   stopVU();
 
-  syncActivePool();
-
-  // Fetch if pool empty
-  if (currentPool().length === 0) {
+  if (stationPool.length - poolIndex < 5) {
     setStation('SCANNING...','blink');
-    await refillPool(activePool);
-    if (token !== playToken) return;
+    const ok = await fetchStations();
+    if (!ok || token !== playToken) return;
+    if (stationPool.length === 0) { setStation('NO SIGNAL','blink'); return; }
   }
 
-  // Still empty after fetch — try global fallback
-  if (currentPool().length === 0) {
-    const fallback = await apiFetch(`${API_HOSTS[0]}/json/stations/search?limit=40&hidebroken=true&order=random`);
-    addToPool(activePool, fallback);
-    if (token !== playToken) return;
-  }
-
-  if (currentPool().length === 0) { setStation('NO SIGNAL','blink'); return; }
-
-  // Pre-refill in background when getting low
-  if (currentPool().length < POOL_MIN * 2) refillPool(activePool);
-
-  const station = currentPool().shift();
-  currentStation = station;
-  markPlayed(station.url_resolved);
+  const station = stationPool[poolIndex % stationPool.length];
+  poolIndex++; currentStation = station;
 
   setNeedle(randomNeedle()); setStation('TUNING...','blink');
   const skipTimer = setTimeout(()=>{
     if(token===playToken&&!isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }
-  }, 7000);
+  }, 8000);
 
   audio.src = station.url_resolved;
   audio.volume = document.getElementById('volSlider').value/100;
@@ -1370,8 +1326,9 @@ async function playRandomStation() {
   } catch(e) {
     clearTimeout(skipTimer);
     if (token !== playToken) return;
-    // Station failed — skip immediately to next
-    setTimeout(playRandomStation, 100);
+    stationPool.splice((poolIndex-1) % stationPool.length, 1);
+    poolIndex = Math.max(0, poolIndex-1);
+    setTimeout(playRandomStation, 200);
   }
 }
 
@@ -1521,12 +1478,12 @@ function onFilterToggle(type, on) {
   const knob = document.getElementById(type==='genre'?'filterKnobGenre':'filterKnobRegion');
   if (knob) knob.classList.toggle('active', on);
   // Clear filtered pool so it refetches with new settings
-  pools.filtered = [];
+  stationPool = []; poolIndex = 0;
   const label = on?(type==='genre'?'GENRE ON':'REGION ON'):(type==='genre'?'GENRE OFF':'REGION OFF');
   setStation(label,'');
   setTimeout(()=>setStation(isPlaying?'ON AIR':'PRESS ►',''),1500);
   // Pre-fetch filtered pool in background
-  if (on) refillPool('filtered');
+
 }
 function toggleFilterKnob(type) {
   const on = !filterState[type].active;
@@ -1545,7 +1502,7 @@ function updateFilter(type, cb) {
     const knob=document.getElementById(type==='genre'?'filterKnobGenre':'filterKnobRegion');
     if(knob) knob.classList.add('active');
   }
-  pools.filtered = [];
+  stationPool = []; poolIndex = 0;
   localStorage.setItem('radioFilter',JSON.stringify(filterState));
 }
 function buildFilteredUrl() {
