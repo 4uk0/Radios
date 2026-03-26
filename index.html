@@ -1113,8 +1113,28 @@ function animEQ() {
   });
 }
 
-function startVU() { if (!vuInt) vuInt = setInterval(animEQ,60); }
-function stopVU()  { clearInterval(vuInt); vuInt=null; document.querySelectorAll('.eq-bar').forEach(b=>b.style.height='3%'); }
+// Heartbeat to catch silent stream death
+let lastTime = 0, heartbeatInt = null;
+function startVU() {
+  if (!vuInt) vuInt = setInterval(animEQ,60);
+  if (!heartbeatInt) heartbeatInt = setInterval(() => {
+    if (!isPlaying) return;
+    const t = audio.currentTime;
+    if (t === lastTime && t > 0) {
+      console.warn('Stream appears stuck — restarting');
+      setStation('SKIP...','blink');
+      playRandomStation();
+    }
+    lastTime = t;
+  }, 15000); // check every 15 seconds
+}
+function stopVU() {
+  clearInterval(vuInt); vuInt = null;
+  clearInterval(heartbeatInt); heartbeatInt = null;
+  lastTime = 0;
+  document.querySelectorAll('.eq-bar').forEach(b=>b.style.height='3%');
+}
+
 
 // ── DISPLAYS ──
 function setStation(text, mode) {
@@ -1206,6 +1226,8 @@ function updateMediaSession(station) {
 const API_HOSTS = ['https://de1.api.radio-browser.info','https://nl1.api.radio-browser.info','https://at1.api.radio-browser.info'];
 let apiHost = API_HOSTS[0];
 let stationPool = [], poolIndex = 0;
+const stationHistory = []; // track played stations for REW
+const HISTORY_MAX = 20;
 
 function randomOffset() { return Math.floor(Math.random() * 8000); }
 
@@ -1296,6 +1318,9 @@ async function playRandomStation() {
 
   const station = stationPool[poolIndex % stationPool.length];
   poolIndex++; currentStation = station;
+  // Track history for REW
+  stationHistory.push(station);
+  if (stationHistory.length > HISTORY_MAX) stationHistory.shift();
 
   setNeedle(randomNeedle()); setStation('TUNING...','blink');
   const skipTimer = setTimeout(()=>{
@@ -1537,10 +1562,62 @@ function initFilters() {
   } catch(e){}
 }
 
+// ── PREVIOUS STATION ──
+async function playPreviousStation() {
+  // Need at least 2 entries (current + one previous)
+  if (stationHistory.length < 2) { playRandomStation(); return; }
+  // Remove current from history, get previous
+  stationHistory.pop();
+  const station = stationHistory[stationHistory.length - 1];
+  stationHistory.pop(); // will be re-added when it plays
+
+  const token = ++playToken;
+  audio.pause(); audio.src = ''; isPlaying = false;
+  clearTimeout(audio._stallTimer);
+  document.getElementById('wrapper').classList.remove('playing');
+  document.getElementById('btnPlay').classList.remove('pressed');
+  stopVU();
+
+  currentStation = station;
+  setNeedle(randomNeedle()); setStation('TUNING...','blink');
+  const skipTimer = setTimeout(()=>{
+    if(token===playToken&&!isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }
+  }, 8000);
+
+  audio.src = station.url_resolved;
+  audio.volume = document.getElementById('volSlider').value/100;
+  try {
+    initAudioChain(); resumeAudioCtx();
+    await audio.play();
+    if (token !== playToken) return;
+    useRealEQ = audioChainReady;
+    clearTimeout(skipTimer);
+    isPlaying = true;
+    document.getElementById('wrapper').classList.add('playing');
+    document.getElementById('btnPlay').classList.add('pressed');
+    startVU();
+    const flag = countryFlag(station.countrycode);
+    showDeck(station.name||'UNKNOWN',(flag?flag+' ':'')+( station.country||''));
+    setStation('ON AIR','');
+    normalizerOnPlay(station);
+    updateMediaSession(station);
+    // Re-add to history
+    stationHistory.push(station);
+    clearTimeout(audio._stallTimer);
+    audio._stallTimer = setTimeout(()=>{
+      if(token===playToken&&isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }
+    }, 6000);
+  } catch(e) {
+    clearTimeout(skipTimer);
+    if (token !== playToken) return;
+    setTimeout(playRandomStation, 200);
+  }
+}
+
 // ── TRANSPORT ──
 document.getElementById('btnPlay').addEventListener('click',()=>playRandomStation());
 document.getElementById('btnFF').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
-document.getElementById('btnRew').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
+document.getElementById('btnRew').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playPreviousStation(); });
 document.getElementById('btnStop').addEventListener('click',function(){
   audio.pause(); isPlaying=false; clearTimeout(audio._stallTimer);
   document.getElementById('wrapper').classList.remove('playing');
@@ -1707,7 +1784,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function pb(id,fn) { const b=document.getElementById(id); if(b) b.addEventListener('click',fn); }
   pb('portBtnPlay',()=>playRandomStation());
   pb('portBtnFF',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
-  pb('portBtnRew',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
+  pb('portBtnRew',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playPreviousStation(); });
   pb('portBtnStop',function(){ audio.pause(); isPlaying=false; clearTimeout(audio._stallTimer); document.getElementById('wrapper').classList.remove('playing'); ['btnPlay','portBtnPlay'].forEach(function(id){ const b=document.getElementById(id); if(b) b.classList.remove('pressed'); }); stopVU(); setStation('STOPPED',''); this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); });
   pb('portBtnRec',function(){
   if(!currentStation) { setStation('NO STATION','blink'); return; }
