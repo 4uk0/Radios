@@ -856,7 +856,7 @@ body.dark-mode .filter-checkbox-row:hover { background: #2a2a2a; }
 .filter-knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .filter-knob-ring { width: clamp(10px,1.8vw,20px); height: clamp(10px,1.8vw,20px); border-radius: 50%; background: radial-gradient(circle at 35% 28%, #666 0%, #333 40%, #111 100%); border: 1.5px solid #222; position: relative; box-shadow: 1px 2px 5px rgba(0,0,0,0.7), inset 0 1px 2px rgba(255,255,255,0.15); transition: box-shadow 0.2s; }
 .filter-knob-dot { position: absolute; left: 50%; top: 12%; width: 2px; height: 28%; background: #666; border-radius: 1px; transform: translateX(-50%); }
-.filter-knob-label { font-family: 'Courier New', monospace; font-size: clamp(5px,0.75vw,7px); color: rgba(150,150,150,0.8); letter-spacing: 1px; transition: color 0.2s; }
+.filter-knob-label { font-family: 'Courier New', monospace; font-size: 0.75vw; color: rgba(150,150,150,0.8); letter-spacing: 1px; transition: color 0.2s; }
 .filter-knob-wrap.active .filter-knob-ring { background: radial-gradient(circle at 35% 28%, #55bb55 0%, #228822 40%, #114411 100%); border-color: #33aa33; box-shadow: 1px 2px 5px rgba(0,0,0,0.7), 0 0 8px rgba(0,200,80,0.7), 0 0 16px rgba(0,200,80,0.3), inset 0 1px 2px rgba(255,255,255,0.2); }
 .filter-knob-wrap.active .filter-knob-dot { background: #aaffaa; box-shadow: 0 0 3px rgba(100,255,100,0.8); }
 .filter-knob-wrap.active .filter-knob-label { color: #44dd44; }
@@ -872,7 +872,7 @@ body.dark-mode .filter-checkbox-row:hover { background: #2a2a2a; }
   left: 0; right: 0;
   height: 2px;
   background: #00ff88;
-  bottom: var(--peak, 0%);
+  bottom: var(--peak, 0%); /* peak hold indicator */
   opacity: 0.8;
   box-shadow: 0 0 4px #00ff88;
   transition: bottom 0.05s;
@@ -880,6 +880,83 @@ body.dark-mode .filter-checkbox-row:hover { background: #2a2a2a; }
 
 
 
+
+
+/* ── EASTER EGG ANTENNA ── */
+#antenna-wrap {
+  position: absolute;
+  left: 82.59%;
+  top: 7.3%;
+  width: 0.80%;
+  height: 25.00%;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  cursor: pointer;
+  z-index: 10;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Base nub — always visible */
+#antenna-base {
+  width: 100%;
+  height: 8%;
+  background: linear-gradient(to bottom, #aaa, #666);
+  border-radius: 3px 3px 0 0;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* Segments — hidden by default, extend upward */
+.antenna-seg {
+  width: 75%;
+  height: 0%;
+  background: linear-gradient(to right, #ccc, #888, #ccc);
+  border-radius: 2px;
+  flex-shrink: 0;
+  transform-origin: bottom center;
+  transition: height 0.18s ease-out, opacity 0.18s;
+  opacity: 0;
+  box-shadow: 1px 0 2px rgba(0,0,0,0.3);
+}
+.antenna-seg:nth-child(2) { width: 72%; transition-delay: 0.00s; }
+.antenna-seg:nth-child(3) { width: 58%; transition-delay: 0.10s; }
+.antenna-seg:nth-child(4) { width: 44%; transition-delay: 0.20s; }
+
+/* Tip */
+#antenna-tip {
+  width: 3px; height: 0%;
+  background: #ddd;
+  border-radius: 2px;
+  flex-shrink: 0;
+  transition: height 0.15s ease-out 0.4s, opacity 0.15s 0.4s;
+  opacity: 0;
+}
+
+/* Extended state */
+#antenna-wrap.extended .antenna-seg {
+  height: 22%;
+  opacity: 1;
+}
+#antenna-wrap.extended #antenna-tip {
+  height: 12%;
+  opacity: 1;
+}
+
+
+
+/* Dark mode antenna */
+body.dark-mode .antenna-seg {
+  background: linear-gradient(to right, #999, #555, #999);
+}
+body.dark-mode #antenna-base {
+  background: linear-gradient(to bottom, #888, #444);
+}
+
+/* Hide on mobile portrait */
+@media (max-width: 700px) {
+  #antenna-wrap { display: none; }
+}
 
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -897,6 +974,14 @@ body.dark-mode .filter-checkbox-row:hover { background: #2a2a2a; }
   <img id="boomImg" alt="World Radio Boombox" draggable="false">
   <img id="boomImgDark" alt="World Radio Boombox Dark" draggable="false" style="display:none;width:100%;">
   <div class="overlay">
+    <!-- ── EASTER EGG ANTENNA ── -->
+    <div id="antenna-wrap" onclick="toggleAntenna()" title="🎙">
+      <div id="antenna-tip"></div>
+      <div class="antenna-seg"></div>
+      <div class="antenna-seg"></div>
+      <div class="antenna-seg"></div>
+      <div id="antenna-base"></div>
+    </div>
 
     <!-- EQ Display -->
     <div class="eq-disp" id="eqDisp" style="left:62.005%;top:35.429%;width:12.144%;height:4.988%;">
@@ -1091,7 +1176,7 @@ function animEQ() {
       else if (eqPeakTimer[i]>0) eqPeakTimer[i]--;
       else eqPeak[i] = Math.max(h, eqPeak[i]-PEAK_DECAY);
       b.style.height = h+'%';
-      b.style.setProperty('--peak', eqPeak[i]+'%');
+      b.style.setProperty('--peak', eqPeak[i]+'%'); b.setAttribute('data-peak', eqPeak[i]);
     });
     return;
   }
@@ -1112,7 +1197,7 @@ function animEQ() {
       eqPeak[i]  = Math.max(2, eqPeak[i]*0.85);
     }
     b.style.height = eqState[i]+'%';
-    b.style.setProperty('--peak', eqPeak[i]+'%');
+    b.style.setProperty('--peak', eqPeak[i]+'%'); b.setAttribute('data-peak', eqPeak[i]);
   });
 }
 
@@ -1267,7 +1352,7 @@ function getFilterUrl() {
 }
 
 async function fetchStations(attempt=0) {
-  if (attempt >= API_HOSTS.length*2) return false;
+  if (attempt >= API_HOSTS.length) return false; // max 3 attempts
   try {
     // Use filter URL if active, otherwise random
     const filterUrl = getFilterUrl();
@@ -1285,7 +1370,7 @@ async function fetchStations(attempt=0) {
       }
     }
 
-    const res = await fetch(url, {signal: AbortSignal.timeout(6000)});
+    const res = await fetch(url, {signal: AbortSignal.timeout(4000)}); // 4s timeout
     if (!res.ok) throw new Error('HTTP '+res.status);
     const stations = await res.json();
     const fresh = stations.filter(s =>
@@ -1617,6 +1702,37 @@ async function playPreviousStation() {
   }
 }
 
+// ── EASTER EGG ANTENNA ──
+let antennaExtended = false;
+let boostTimeout = null;
+let boostInterval = null;
+
+function toggleAntenna() {
+  antennaExtended = !antennaExtended;
+  const wrap = document.getElementById('antenna-wrap');
+  wrap.classList.toggle('extended', antennaExtended);
+
+  if (antennaExtended) {
+    setTimeout(() => triggerSignalBoost(), 500);
+  } else {
+    clearInterval(boostInterval);
+    if (isPlaying) setStation('ON AIR', '');
+    else setStation('PRESS ▶', '');
+  }
+}
+
+function triggerSignalBoost() {
+  if (!antennaExtended) return;
+  setStation('⚡ BOOST ACTIVE', '');
+  // EQ goes wild
+  boostInterval = setInterval(() => {
+    if (!antennaExtended) { clearInterval(boostInterval); return; }
+    for (let i=0; i<eqVel.length; i++) {
+      eqVel[i] = (Math.random() - 0.3) * 60;
+    }
+  }, 80);
+}
+
 // ── TRANSPORT ──
 document.getElementById('btnPlay').addEventListener('click',()=>playRandomStation());
 document.getElementById('btnFF').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
@@ -1824,7 +1940,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 
 
 <!-- ── PORTRAIT LAYOUT ── -->
-<div id="portraitWrapper">
+<div id="portraitWrapper" style="position:relative;width:100%;">
   <img class="portrait-bg" id="portraitBg" alt="Boombox Portrait" style="display:block;">
   <img class="portrait-bg" id="portraitBgDark" alt="Boombox Portrait Dark" style="display:none;">
 
