@@ -958,6 +958,20 @@ body.dark-mode #antenna-base {
   #antenna-wrap { display: none; }
 }
 
+
+/* ── SHARE BUTTON on recordings ── */
+.rec-share {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex-shrink: 0;
+  background: none; border: 1px solid #ddd; border-radius: 50%;
+  color: #aaa; font-size: 11px; cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  text-decoration: none;
+}
+.rec-share:hover { background: #f0f0ff; border-color: #99f; color: #66c; }
+body.dark-mode .rec-share { border-color: #444; color: #666; }
+body.dark-mode .rec-share:hover { background: #2a2a3a; border-color: #77a; color: #99c; }
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="manifest.json">
@@ -1472,7 +1486,11 @@ function updateMediaSession(station) {
 
   navigator.mediaSession.playbackState = 'playing';
 
-  navigator.mediaSession.setActionHandler('play', () => playRandomStation());
+  navigator.mediaSession.setActionHandler('play', () => {
+    if (audio.src && currentStation && !isPlaying) {
+      audio.play().then(() => { isPlaying=true; startVU(); setStation('ON AIR',''); }).catch(()=>playRandomStation());
+    } else { playRandomStation(); }
+  });
   navigator.mediaSession.setActionHandler('pause', () => {
     audio.pause();
     isPlaying = false;
@@ -1733,8 +1751,57 @@ function triggerSignalBoost() {
   }, 80);
 }
 
+// ── SHARE STATION ──
+async function shareRecording(e, idx) {
+  e.stopPropagation();
+  const r = recordings[idx];
+  const shareText = `🎵 Listening to ${r.name} ${r.flag} on Radios`;
+  const shareUrl  = window.location.href.split('?')[0] + `?station=${encodeURIComponent(r.url)}&name=${encodeURIComponent(r.name)}`;
+
+  if (navigator.share) {
+    // Native share sheet (mobile)
+    try {
+      await navigator.share({ title: r.name, text: shareText, url: shareUrl });
+    } catch(e) { /* cancelled */ }
+  } else {
+    // Desktop fallback — copy to clipboard
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setStation('LINK COPIED', '');
+      setTimeout(() => setStation(isPlaying ? 'ON AIR' : 'PRESS ▶', ''), 2000);
+    } catch(e) {
+      // Last resort — prompt
+      prompt('Copy station link:', shareUrl);
+    }
+  }
+}
+
 // ── TRANSPORT ──
-document.getElementById('btnPlay').addEventListener('click',()=>playRandomStation());
+document.getElementById('btnPlay').addEventListener('click', () => {
+  if (isPlaying) {
+    // Pause current station
+    audio.pause();
+    isPlaying = false;
+    clearTimeout(audio._stallTimer);
+    document.getElementById('wrapper').classList.remove('playing');
+    document.getElementById('btnPlay').classList.remove('pressed');
+    stopVU();
+    setStation('PAUSED', '');
+  } else if (audio.src && currentStation) {
+    // Resume same station
+    audio.play().then(() => {
+      isPlaying = true;
+      document.getElementById('wrapper').classList.add('playing');
+      document.getElementById('btnPlay').classList.add('pressed');
+      startVU();
+      setStation('ON AIR', '');
+      updateMediaSession(currentStation);
+    }).catch(() => playRandomStation()); // if resume fails, play new
+  } else {
+    // Nothing loaded yet — play new station
+    playRandomStation();
+  }
+});
 document.getElementById('btnFF').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
 document.getElementById('btnRew').addEventListener('click',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playPreviousStation(); });
 document.getElementById('btnStop').addEventListener('click',function(){
@@ -1794,6 +1861,7 @@ function renderRecordings() {
       <span class="rec-play">▶</span>
       <span class="rec-name">${r.flag} ${r.name}</span>
       <span class="rec-meta">${r.country} · ${r.genre} · ${r.time}</span>
+      <button class="rec-share" onclick="shareRecording(event,${i})" title="Share station">⤴</button>
       <button class="rec-delete" onclick="deleteRecording(event,${i})">✕</button>
     </div>`).join('');
 }
@@ -1901,7 +1969,24 @@ document.addEventListener('DOMContentLoaded', function() {
   const portVol=document.getElementById('portVolSlider');
   if(portVol) portVol.addEventListener('input',function(){ audio.volume=this.value/100; normalizerOnVolumeChange(this.value); const dv=document.getElementById('volSlider'); if(dv) dv.value=this.value; setStation('VOL '+this.value+'%',''); });
   function pb(id,fn) { const b=document.getElementById(id); if(b) b.addEventListener('click',fn); }
-  pb('portBtnPlay',()=>playRandomStation());
+  pb('portBtnPlay', () => {
+  if (isPlaying) {
+    audio.pause(); isPlaying = false;
+    clearTimeout(audio._stallTimer);
+    document.getElementById('wrapper').classList.remove('playing');
+    document.getElementById('btnPlay').classList.remove('pressed');
+    stopVU(); setStation('PAUSED', '');
+  } else if (audio.src && currentStation) {
+    audio.play().then(() => {
+      isPlaying = true;
+      document.getElementById('wrapper').classList.add('playing');
+      document.getElementById('btnPlay').classList.add('pressed');
+      startVU(); setStation('ON AIR', '');
+    }).catch(() => playRandomStation());
+  } else {
+    playRandomStation();
+  }
+});
   pb('portBtnFF',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playRandomStation(); });
   pb('portBtnRew',function(){ this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); playPreviousStation(); });
   pb('portBtnStop',function(){ audio.pause(); isPlaying=false; clearTimeout(audio._stallTimer); document.getElementById('wrapper').classList.remove('playing'); ['btnPlay','portBtnPlay'].forEach(function(id){ const b=document.getElementById(id); if(b) b.classList.remove('pressed'); }); stopVU(); setStation('STOPPED',''); this.classList.add('pressed'); setTimeout(()=>this.classList.remove('pressed'),200); });
