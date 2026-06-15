@@ -2015,10 +2015,19 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   if (isIOS) document.body.classList.add('ios-device');
   initDarkMode();
   initFilters();
-  // Register service worker only on real hosting (not localhost/preview)
+  // Register service worker only on real hosting
   if ('serviceWorker' in navigator && !window.location.hostname.includes('claudeusercontent')) {
     navigator.serviceWorker.register('sw.js')
-      .then(() => console.log('SW registered'))
+      .then(reg => {
+        console.log('SW registered');
+        // Listen for new SW activation — auto reload for instant update
+        navigator.serviceWorker.addEventListener('message', e => {
+          if (e.data?.type === 'SW_UPDATED') {
+            console.log('New version available — reloading');
+            window.location.reload();
+          }
+        });
+      })
       .catch(e => console.warn('SW failed:', e));
   }
   startVU();
