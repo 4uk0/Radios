@@ -1218,30 +1218,82 @@ function animEQ() {
   });
 }
 
+// ── ANDROID / MOBILE KEEPALIVE ──
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('Wake Lock active');
+      wakeLock.addEventListener('release', () => {
+        console.log('Wake Lock released — re-requesting');
+        if (isPlaying) requestWakeLock();
+      });
+    } catch(e) { console.warn('Wake Lock failed:', e.message); }
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+
+// Reconnect stream when page becomes visible again (screen unlock)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isPlaying) {
+    // Re-request wake lock (Android releases it on screen off)
+    requestWakeLock();
+    // Check if audio actually stopped
+    setTimeout(() => {
+      if (isPlaying && audio.paused) {
+        console.log('Audio paused after visibility restore — reconnecting');
+        audio.play().catch(() => playRandomStation());
+      }
+      // Also check if stream is frozen
+      if (isPlaying && audio.currentTime === lastTime && lastTime > 0) {
+        console.log('Stream frozen after screen restore — restarting');
+        playRandomStation();
+      }
+    }, 1500);
+  }
+});
+
 // Heartbeat to catch silent stream death
 let lastTime = 0, heartbeatInt = null;
+
 function startVU() {
-  if (!vuInt) vuInt = setInterval(animEQ,60);
+  if (!vuInt) vuInt = setInterval(animEQ, 60);
   if (!heartbeatInt) heartbeatInt = setInterval(() => {
     if (!isPlaying) return;
     const t = audio.currentTime;
     if (t === lastTime && t > 0 && isPlaying) {
-      // Double-check — wait another 5s before actually skipping
       setTimeout(() => {
         if (audio.currentTime === t && isPlaying) {
-          console.warn('Stream confirmed stuck — restarting');
-          playRandomStation();
+          console.warn('Stream confirmed stuck — reconnecting');
+          // Try to reconnect same station first before skipping
+          const src = audio.src;
+          audio.src = src;
+          audio.play().then(() => {
+            console.log('Reconnected same station ✓');
+          }).catch(() => {
+            console.warn('Reconnect failed — skipping');
+            playRandomStation();
+          });
         }
       }, 5000);
     }
     lastTime = t;
-  }, 15000); // check every 15 seconds
+  }, 12000); // check every 12s
+  // Request wake lock when playing starts
+  requestWakeLock();
 }
+
 function stopVU() {
   clearInterval(vuInt); vuInt = null;
   clearInterval(heartbeatInt); heartbeatInt = null;
   lastTime = 0;
-  document.querySelectorAll('.eq-bar').forEach(b=>b.style.height='3%');
+  releaseWakeLock();
+  document.querySelectorAll('.eq-bar').forEach(b => b.style.height = '3%');
 }
 
 
@@ -1456,9 +1508,14 @@ async function playRandomStation() {
     normalizerOnPlay(station);
     updateMediaSession(station);
     clearTimeout(audio._stallTimer);
+    // Longer stall timeout on mobile (Android throttles streams)
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
     audio._stallTimer = setTimeout(()=>{
-      if(token===playToken&&isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }
-    }, 6000);
+      if(token===playToken&&isPlaying) {
+        // Try reconnecting same station before skipping
+        audio.play().catch(() => { setStation('SKIP...','blink'); playRandomStation(); });
+      }
+    }, isMobile ? 15000 : 8000);
   } catch(e) {
     clearTimeout(skipTimer);
     if (token !== playToken) return;
@@ -1470,7 +1527,7 @@ async function playRandomStation() {
 
 // ── AUDIO EVENTS ──
 audio.addEventListener('error',()=>{ clearTimeout(audio._stallTimer); if(playToken>0) { setStation('SKIP...','blink'); setTimeout(playRandomStation,300); } });
-audio.addEventListener('stalled',()=>{ clearTimeout(audio._stallTimer); if(isPlaying) { setStation('BUFFERING','blink'); audio._stallTimer=setTimeout(()=>{ if(isPlaying) { setStation('SKIP...','blink'); playRandomStation(); } },6000); } });
+audio.addEventListener('stalled',()=>{ clearTimeout(audio._stallTimer); if(isPlaying) { setStation('BUFFERING','blink'); audio._stallTimer=setTimeout(()=>{ if(isPlaying) { audio.load(); audio.play().catch(()=>{ setStation('SKIP...','blink'); playRandomStation(); }); } },6000); } });
 audio.addEventListener('playing',()=>{ clearTimeout(audio._stallTimer); if(currentStation) { isPlaying=true; document.getElementById('wrapper').classList.add('playing'); startVU(); const flag=countryFlag(currentStation.countrycode); showDeck(currentStation.name||'UNKNOWN',(flag?flag+' ':'')+( currentStation.country||'')); setStation('ON AIR',''); updateMediaSession(currentStation); } });
 audio.addEventListener('timeupdate',()=>clearTimeout(audio._stallTimer));
 
@@ -1719,9 +1776,14 @@ async function playPreviousStation() {
     // Re-add to history
     stationHistory.push(station);
     clearTimeout(audio._stallTimer);
+    // Longer stall timeout on mobile (Android throttles streams)
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
     audio._stallTimer = setTimeout(()=>{
-      if(token===playToken&&isPlaying) { setStation('SKIP...','blink'); playRandomStation(); }
-    }, 6000);
+      if(token===playToken&&isPlaying) {
+        // Try reconnecting same station before skipping
+        audio.play().catch(() => { setStation('SKIP...','blink'); playRandomStation(); });
+      }
+    }, isMobile ? 15000 : 8000);
   } catch(e) {
     clearTimeout(skipTimer);
     if (token !== playToken) return;
